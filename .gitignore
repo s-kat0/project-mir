@@ -4,3 +4,6 @@ data/
 TODO*
 .ipynb_checkpoints/
 .idea/
+output/
+__pycache__/
+*.prop
