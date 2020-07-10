@@ -73,149 +73,79 @@ class XMLDocument:
             is_italic = (math_component.get('mathvariant') == 'italic')
             return is_mi and (is_math_component_len_1 or is_italic)
 
-        # TODO: this version ignores mover and munder.
+        def extract_ml_component(
+                html_cssselect_math,
+                mltag,
+                identifiers,
+                reg_string_list):
+            identifiers_ = list(identifiers)
+            reg_string_list_ = list(reg_string_list)
+            for html_math_mltag in html_cssselect_math.cssselect(mltag):
+                if mltag == 'mi':
+                    math_txt = html_math_mltag.text_content()
+                    identifier_candidate = html_math_mltag
+                else:
+                    html_math_mltag_component = [
+                        x for x in html_math_mltag.iterchildren()]
+                    identifier_candidate = html_math_mltag_component[0]
+                    math_txt = [x.text_content()
+                                for x in html_math_mltag_component]
+                    if mltag == 'msubsup':
+                        math_txt = math_txt[0] + '_' + \
+                            math_txt[1] + '^' + math_txt[2]
+                    elif mltag == 'msub':
+                        math_txt = math_txt[0] + '_' + math_txt[1]
+                    elif mltag == 'msup':
+                        math_txt = math_txt[0] + '^' + math_txt[1]
+                    elif mltag == 'mover':
+                        math_txt = r'\overset{' + \
+                            math_txt[1] + '}{' + math_txt[0] + '}'
+                    elif mltag == 'munder':
+                        math_txt = r'\underset{' + \
+                            math_txt[1] + '}{' + math_txt[0] + '}'
+                    elif mltag == 'munderover':
+                        math_txt = r'\overset{' + math_txt[2] + '}{' + \
+                            r'\underset{' + math_txt[1] + '}{' + math_txt[0] + '}}'
+
+                if is_identifier(identifier_candidate) and (
+                        math_txt not in identifiers_):
+                    identifiers_.append(math_txt)
+                # drop_tree is for extracting w_i without w and i.
+                html_math_mltag.drop_tree()
+                reg_string = lxml.html.tostring(
+                    html_math_mltag, encoding='unicode')
+                if is_identifier(identifier_candidate):
+                    reg_string_list_.append(
+                        (math_txt, reg_string, 'MATH{:04d}'.format(
+                            identifiers_.index(math_txt))))
+                else:
+                    reg_string_list_.append(
+                        (math_txt, reg_string, math_txt))
+            return identifiers_, reg_string_list_
+
+        # TODO: extract mover included in msub.
         for html_math in html.cssselect('math'):
             # variable with subscript and superscript
-            for html_math_msubsup in html_math.cssselect('msubsup'):
-                html_math_msubsup_component = [
-                    x for x in html_math_msubsup.iterchildren()]
-                math_txt = [x.text_content()
-                            for x in html_math_msubsup_component]
-                math_txt = math_txt[0] + '_' + math_txt[1] + '^' + math_txt[2]
-                if is_identifier(html_math_msubsup) and (
-                        math_txt not in identifiers):
-                    identifiers.append(math_txt)
-                html_math_msubsup.drop_tree()
-                reg_string = lxml.html.tostring(
-                    html_math_msubsup, encoding='unicode')
-                if is_identifier(html_math_msubsup):
-                    reg_string_list.append(
-                        (math_txt, reg_string, 'MATH{:04d}'.format(
-                            identifiers.index(math_txt))))
-                else:
-                    reg_string_list.append((math_txt, reg_string, math_txt))
-
+            identifiers, reg_string_list = extract_ml_component(
+                html_math, 'msubsup', identifiers, reg_string_list)
             # variable with subscript
-            for html_math_msub in html_math.cssselect('msub'):
-                html_math_msub_component = [
-                    x for x in html_math_msub.iterchildren()]
-                math_txt = '_'.join([x.text_content()
-                                     for x in html_math_msub_component])
-                if is_identifier(
-                        html_math_msub_component[0]) and (
-                        math_txt not in identifiers):
-                    identifiers.append(math_txt)
-                html_math_msub.drop_tree()
-                reg_string = lxml.html.tostring(
-                    html_math_msub, encoding='unicode')
-                if is_identifier(html_math_msub_component[0]):
-                    reg_string_list.append(
-                        (math_txt, reg_string, 'MATH{:04d}'.format(
-                            identifiers.index(math_txt))))
-                else:
-                    reg_string_list.append((math_txt, reg_string, math_txt))
-
+            identifiers, reg_string_list = extract_ml_component(
+                html_math, 'msub', identifiers, reg_string_list)
             # variable with superscript
-            for html_math_msup in html_math.cssselect('msup'):
-                html_math_msup_component = [
-                    x for x in html_math_msup.iterchildren()]
-                math_txt = '^'.join([x.text_content()
-                                     for x in html_math_msup_component])
-                if is_identifier(
-                        html_math_msup_component[0]) and (
-                        math_txt not in identifiers):
-                    identifiers.append(math_txt)
-                html_math_msup.drop_tree()
-                reg_string = lxml.html.tostring(
-                    html_math_msup, encoding='unicode')
-                if is_identifier(html_math_msup_component[0]):
-                    reg_string_list.append(
-                        (math_txt, reg_string, 'MATH{:04d}'.format(
-                            identifiers.index(math_txt))))
-                else:
-                    reg_string_list.append((math_txt, reg_string, math_txt))
-
-            # variable with overscript
-            for html_math_mover in html_math.cssselect('mover'):
-                html_math_mover_component = [
-                    x for x in html_math_mover.iterchildren()]
-                math_txt = [x.text_content()
-                            for x in html_math_mover_component]
-                math_txt = r'\overset{' + \
-                    math_txt[1] + '}{' + math_txt[0] + '}'
-                if is_identifier(
-                        html_math_mover_component[0]) and (
-                        math_txt not in identifiers):
-                    identifiers.append(math_txt)
-                html_math_mover.drop_tree()
-                reg_string = lxml.html.tostring(
-                    html_math_mover, encoding='unicode')
-                if is_identifier(html_math_mover_component[0]):
-                    reg_string_list.append(
-                        (math_txt, reg_string, 'MATH{:04d}'.format(
-                            identifiers.index(math_txt))))
-                else:
-                    reg_string_list.append((math_txt, reg_string, math_txt))
-
+            identifiers, reg_string_list = extract_ml_component(
+                html_math, 'msup', identifiers, reg_string_list)
+            # variable with underscript and overscript
+            identifiers, reg_string_list = extract_ml_component(
+                html_math, 'munderover', identifiers, reg_string_list)
             # variable with underscript
-            for html_math_munder in html_math.cssselect('munder'):
-                html_math_munder_component = [
-                    x for x in html_math_munder.iterchildren()]
-                math_txt = [x.text_content()
-                            for x in html_math_munder_component]
-                math_txt = r'\underset{' + \
-                    math_txt[1] + '}{' + math_txt[0] + '}'
-                if is_identifier(
-                        html_math_munder_component[0]) and (
-                        math_txt not in identifiers):
-                    identifiers.append(math_txt)
-                html_math_munder.drop_tree()
-                reg_string = lxml.html.tostring(
-                    html_math_munder, encoding='unicode')
-                if is_identifier(html_math_munder_component[0]):
-                    reg_string_list.append(
-                        (math_txt, reg_string, 'MATH{:04d}'.format(
-                            identifiers.index(math_txt))))
-                else:
-                    reg_string_list.append((math_txt, reg_string, math_txt))
-
-            # variable with overscript and underscript
-            for html_math_munderover in html_math.cssselect('munderover'):
-                html_math_munderover_component = [
-                    x for x in html_math_munderover.iterchildren()]
-                math_txt = [x.text_content()
-                            for x in html_math_munderover_component]
-                math_txt = r'\overset{' + math_txt[2] + '}{' + \
-                    r'\underset{' + math_txt[1] + '}{' + math_txt[0] + '}}'
-                if is_identifier(
-                        html_math_munderover_component[0]) and (
-                        math_txt not in identifiers):
-                    identifiers.append(math_txt)
-                html_math_munderover.drop_tree()
-                reg_string = lxml.html.tostring(
-                    html_math_munderover, encoding='unicode')
-                if is_identifier(html_math_munderover_component[0]):
-                    reg_string_list.append(
-                        (math_txt, reg_string, 'MATH{:04d}'.format(
-                            identifiers.index(math_txt))))
-                else:
-                    reg_string_list.append((math_txt, reg_string, math_txt))
-
-            # variable without subscript and superscript
-            for html_math_mi in html_math.cssselect('mi'):
-                math_txt = html_math_mi.text_content()
-                if is_identifier(html_math_mi) and (
-                        math_txt not in identifiers):
-                    identifiers.append(math_txt)
-                html_math_mi.drop_tree()
-                reg_string = lxml.html.tostring(
-                    html_math_mi, encoding='unicode')
-                if is_identifier(html_math_mi):
-                    reg_string_list.append(
-                        (math_txt, reg_string, 'MATH{:04d}'.format(
-                            identifiers.index(math_txt))))
-                else:
-                    reg_string_list.append((math_txt, reg_string, math_txt))
+            identifiers, reg_string_list = extract_ml_component(
+                html_math, 'munder', identifiers, reg_string_list)
+            # variable with overscript
+            identifiers, reg_string_list = extract_ml_component(
+                html_math, 'mover', identifiers, reg_string_list)
+            # variable without anyscript
+            identifiers, reg_string_list = extract_ml_component(
+                html_math, 'mi', identifiers, reg_string_list)
 
         reg_string_list = list(set(reg_string_list))
         reg_string_list = sorted(
