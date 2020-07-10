@@ -135,6 +135,72 @@ class XMLDocument:
                 else:
                     reg_string_list.append((math_txt, reg_string, math_txt))
 
+            # variable with overscript
+            for html_math_mover in html_math.cssselect('mover'):
+                html_math_mover_component = [
+                    x for x in html_math_mover.iterchildren()]
+                math_txt = [x.text_content()
+                            for x in html_math_mover_component]
+                math_txt = r'\overset{' + \
+                    math_txt[1] + '}{' + math_txt[0] + '}'
+                if is_identifier(
+                        html_math_mover_component[0]) and (
+                        math_txt not in identifiers):
+                    identifiers.append(math_txt)
+                html_math_mover.drop_tree()
+                reg_string = lxml.html.tostring(
+                    html_math_mover, encoding='unicode')
+                if is_identifier(html_math_mover_component[0]):
+                    reg_string_list.append(
+                        (math_txt, reg_string, 'MATH{:04d}'.format(
+                            identifiers.index(math_txt))))
+                else:
+                    reg_string_list.append((math_txt, reg_string, math_txt))
+
+            # variable with underscript
+            for html_math_munder in html_math.cssselect('munder'):
+                html_math_munder_component = [
+                    x for x in html_math_munder.iterchildren()]
+                math_txt = [x.text_content()
+                            for x in html_math_munder_component]
+                math_txt = r'\underset{' + \
+                    math_txt[1] + '}{' + math_txt[0] + '}'
+                if is_identifier(
+                        html_math_munder_component[0]) and (
+                        math_txt not in identifiers):
+                    identifiers.append(math_txt)
+                html_math_munder.drop_tree()
+                reg_string = lxml.html.tostring(
+                    html_math_munder, encoding='unicode')
+                if is_identifier(html_math_munder_component[0]):
+                    reg_string_list.append(
+                        (math_txt, reg_string, 'MATH{:04d}'.format(
+                            identifiers.index(math_txt))))
+                else:
+                    reg_string_list.append((math_txt, reg_string, math_txt))
+
+            # variable with overscript and underscript
+            for html_math_munderover in html_math.cssselect('munderover'):
+                html_math_munderover_component = [
+                    x for x in html_math_munderover.iterchildren()]
+                math_txt = [x.text_content()
+                            for x in html_math_munderover_component]
+                math_txt = r'\overset{' + math_txt[2] + '}{' + \
+                    r'\underset{' + math_txt[1] + '}{' + math_txt[0] + '}}'
+                if is_identifier(
+                        html_math_munderover_component[0]) and (
+                        math_txt not in identifiers):
+                    identifiers.append(math_txt)
+                html_math_munderover.drop_tree()
+                reg_string = lxml.html.tostring(
+                    html_math_munderover, encoding='unicode')
+                if is_identifier(html_math_munderover_component[0]):
+                    reg_string_list.append(
+                        (math_txt, reg_string, 'MATH{:04d}'.format(
+                            identifiers.index(math_txt))))
+                else:
+                    reg_string_list.append((math_txt, reg_string, math_txt))
+
             # variable without subscript and superscript
             for html_math_mi in html_math.cssselect('mi'):
                 math_txt = html_math_mi.text_content()
