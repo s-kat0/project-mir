@@ -173,7 +173,6 @@ class XMLDocument:
                         (math_txt, reg_string, math_txt))
             return identifiers_, reg_string_list_
 
-        # TODO: extract mover included in msub.
         ml_tags = [
             'msubsup',
             'msub',
