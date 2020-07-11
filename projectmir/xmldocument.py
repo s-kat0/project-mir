@@ -1,3 +1,5 @@
+import copy
+import warnings
 import lxml.html
 import re
 from stanza.server import CoreNLPClient
@@ -67,11 +69,58 @@ class XMLDocument:
         reg_string_list = []
         identifiers = []
 
-        def is_identifier(math_component):
-            is_mi = (math_component.tag == 'mi')
-            is_math_component_len_1 = (len(math_component.text_content()) == 1)
-            is_italic = (math_component.get('mathvariant') == 'italic')
-            return is_mi and (is_math_component_len_1 or is_italic)
+        # def is_identifier(math_component):
+        #     is_mi = (math_component.tag == 'mi')
+        #     is_math_component_len_1 = (len(math_component.text_content()) == 1)
+        #     is_italic = (math_component.get('mathvariant') == 'italic')
+        #     return is_mi and (is_math_component_len_1 or is_italic)
+
+        def is_identifier(math_txt):
+            not_number = math_txt[0] not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+            return not_number
+
+        def tree_to_str(ml_tree):
+            if isinstance(ml_tree, lxml.html.HtmlElement):
+                if ml_tree.tag in ['mi', 'mo', 'mn']:
+                    math_txt = ml_tree.text_content()
+
+                else:
+                    ml_list = [tree_to_str(x) for x in ml_tree]
+                    if ml_tree.tag == 'mrow':
+                        math_txt = ''.join(ml_list)
+                    elif ml_tree.tag == 'msubsup':
+                        math_txt = ml_list[0] + '_' + ml_list[1] \
+                            + '^' + ml_list[2]
+                    elif ml_tree.tag == 'msub':
+                        math_txt = ml_list[0] + '_' + ml_list[1]
+                    elif ml_tree.tag == 'msup':
+                        math_txt = ml_list[0] + '^' + ml_list[1]
+                    elif ml_tree.tag == 'munderover':
+                        math_txt = r'\overset{' + ml_list[2] + '}{' + \
+                            r'\underset{' + ml_list[1] + '}{' + ml_list[0] + '}}'
+                    elif ml_tree.tag == 'mover':
+                        math_txt = r'\overset{' + \
+                            ml_list[1] + '}{' + ml_list[0] + '}'
+                    elif ml_tree.tag == 'munder':
+                        math_txt = r'\underset{' + \
+                            ml_list[1] + '}{' + ml_list[0] + '}'
+                    else:
+                        math_txt = ''
+                        warnings.warn('unexpected tag')
+                        print(f'{ml_tree}')
+                        print('######################')
+
+            elif isinstance(ml_tree, list):
+                ml_list = [tree_to_str(x) for x in ml_tree]
+                math_txt = ''.join(ml_list)
+
+            else:
+                math_txt = ''
+                warnings.warn('unexpected tag')
+                print(f'{ml_tree}')
+                print('######################')
+
+            return math_txt
 
         def extract_ml_component(
                 html_cssselect_math,
@@ -81,40 +130,41 @@ class XMLDocument:
             identifiers_ = list(identifiers)
             reg_string_list_ = list(reg_string_list)
             for html_math_mltag in html_cssselect_math.cssselect(mltag):
-                if mltag == 'mi':
-                    math_txt = html_math_mltag.text_content()
-                    identifier_candidate = html_math_mltag
-                else:
-                    html_math_mltag_component = [
-                        x for x in html_math_mltag.iterchildren()]
-                    identifier_candidate = html_math_mltag_component[0]
-                    math_txt = [x.text_content()
-                                for x in html_math_mltag_component]
-                    if mltag == 'msubsup':
-                        math_txt = math_txt[0] + '_' + \
-                            math_txt[1] + '^' + math_txt[2]
-                    elif mltag == 'msub':
-                        math_txt = math_txt[0] + '_' + math_txt[1]
-                    elif mltag == 'msup':
-                        math_txt = math_txt[0] + '^' + math_txt[1]
-                    elif mltag == 'mover':
-                        math_txt = r'\overset{' + \
-                            math_txt[1] + '}{' + math_txt[0] + '}'
-                    elif mltag == 'munder':
-                        math_txt = r'\underset{' + \
-                            math_txt[1] + '}{' + math_txt[0] + '}'
-                    elif mltag == 'munderover':
-                        math_txt = r'\overset{' + math_txt[2] + '}{' + \
-                            r'\underset{' + math_txt[1] + '}{' + math_txt[0] + '}}'
+                # if mltag == 'mi':
+                #     math_txt = html_math_mltag.text_content()
+                #     identifier_candidate = html_math_mltag
+                # else:
+                #     html_math_mltag_component = [
+                #         x for x in html_math_mltag.iterchildren()]
+                #     identifier_candidate = html_math_mltag_component[0]
+                #     math_txt = [x.text_content()
+                #                 for x in html_math_mltag_component]
+                #     if mltag == 'msubsup':
+                #         math_txt = math_txt[0] + '_' + \
+                #             math_txt[1] + '^' + math_txt[2]
+                #     elif mltag == 'msub':
+                #         math_txt = math_txt[0] + '_' + math_txt[1]
+                #     elif mltag == 'msup':
+                #         math_txt = math_txt[0] + '^' + math_txt[1]
+                #     elif mltag == 'munderover':
+                #         math_txt = r'\overset{' + math_txt[2] + '}{' + \
+                #             r'\underset{' + math_txt[1] + '}{' + math_txt[0] + '}}'
+                #     elif mltag == 'mover':
+                #         math_txt = r'\overset{' + \
+                #             math_txt[1] + '}{' + math_txt[0] + '}'
+                #     elif mltag == 'munder':
+                #         math_txt = r'\underset{' + \
+                #             math_txt[1] + '}{' + math_txt[0] + '}'
+                math_txt = tree_to_str(html_math_mltag)
 
-                if is_identifier(identifier_candidate) and (
+                if is_identifier(math_txt) and (
                         math_txt not in identifiers_):
                     identifiers_.append(math_txt)
                 # drop_tree is for extracting w_i without w and i.
                 html_math_mltag.drop_tree()
                 reg_string = lxml.html.tostring(
                     html_math_mltag, encoding='unicode')
-                if is_identifier(identifier_candidate):
+                if is_identifier(math_txt):
                     reg_string_list_.append(
                         (math_txt, reg_string, 'MATH{:04d}'.format(
                             identifiers_.index(math_txt))))
@@ -124,28 +174,19 @@ class XMLDocument:
             return identifiers_, reg_string_list_
 
         # TODO: extract mover included in msub.
+        ml_tags = [
+            'msubsup',
+            'msub',
+            'msup',
+            'munderover',
+            'munder',
+            'mover',
+            'mi']
+
         for html_math in html.cssselect('math'):
-            # variable with subscript and superscript
-            identifiers, reg_string_list = extract_ml_component(
-                html_math, 'msubsup', identifiers, reg_string_list)
-            # variable with subscript
-            identifiers, reg_string_list = extract_ml_component(
-                html_math, 'msub', identifiers, reg_string_list)
-            # variable with superscript
-            identifiers, reg_string_list = extract_ml_component(
-                html_math, 'msup', identifiers, reg_string_list)
-            # variable with underscript and overscript
-            identifiers, reg_string_list = extract_ml_component(
-                html_math, 'munderover', identifiers, reg_string_list)
-            # variable with underscript
-            identifiers, reg_string_list = extract_ml_component(
-                html_math, 'munder', identifiers, reg_string_list)
-            # variable with overscript
-            identifiers, reg_string_list = extract_ml_component(
-                html_math, 'mover', identifiers, reg_string_list)
-            # variable without anyscript
-            identifiers, reg_string_list = extract_ml_component(
-                html_math, 'mi', identifiers, reg_string_list)
+            for ml_tag in ml_tags:
+                identifiers, reg_string_list = extract_ml_component(
+                    html_math, ml_tag, identifiers, reg_string_list)
 
         reg_string_list = list(set(reg_string_list))
         reg_string_list = sorted(
