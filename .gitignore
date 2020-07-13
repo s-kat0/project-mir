@@ -7,3 +7,4 @@ TODO*
 output/
 __pycache__/
 *.prop
+*.props
