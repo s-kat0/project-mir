@@ -1,9 +1,8 @@
-import copy
+# import copy
 import warnings
 import lxml.html
 import re
 from stanza.server import CoreNLPClient
-# from stanza.server import CoreNLPClient
 
 
 class XMLDocument:
@@ -59,13 +58,22 @@ class XMLDocument:
             body = annotation_xml_regexp.sub('', body)
             body = annotation_regexp.sub('', body)
             self.body = body
-        print("process document")
+        print("preprocessed document")
 
+    # TODO: 変数の定義を変更する
+    # 現在：mathタグ内のタグを調べ，mi, moタグを有するものを変数としている
+    # 理想：文中に登場する斜体文字．文中に登場するmathの中身で=を有さないもの．
+    # こうすることで，文中に存在する連続する斜体文字を変数と認識できる．
+    # さらに，数式を文中で定義された変数の関係を表すものと考え，
+    # 数式に登場する変数の意味を正確に抽出することを目指す．
+    # 変数の説明が記述されている文：数式とピリオド（.)，コロン，セミコロンを区切り文字とし，
+    # 区切り文字に囲まれている部分にidentifierが含まれているとき，
+    # その部分から名詞句を抽出し，説明候補とする．
     def extract_identifiers(self):
         tree = lxml.html.parse(self.path)
         html = tree.getroot()
-        print('Number of math components is {}'.format(
-            len(html.cssselect('math'))))
+        math_components = html.cssselect("math")
+        print(f'Number of math components is {len(math_components)}')
         reg_string_list = []
         identifiers = []
 
@@ -130,31 +138,6 @@ class XMLDocument:
             identifiers_ = list(identifiers)
             reg_string_list_ = list(reg_string_list)
             for html_math_mltag in html_cssselect_math.cssselect(mltag):
-                # if mltag == 'mi':
-                #     math_txt = html_math_mltag.text_content()
-                #     identifier_candidate = html_math_mltag
-                # else:
-                #     html_math_mltag_component = [
-                #         x for x in html_math_mltag.iterchildren()]
-                #     identifier_candidate = html_math_mltag_component[0]
-                #     math_txt = [x.text_content()
-                #                 for x in html_math_mltag_component]
-                #     if mltag == 'msubsup':
-                #         math_txt = math_txt[0] + '_' + \
-                #             math_txt[1] + '^' + math_txt[2]
-                #     elif mltag == 'msub':
-                #         math_txt = math_txt[0] + '_' + math_txt[1]
-                #     elif mltag == 'msup':
-                #         math_txt = math_txt[0] + '^' + math_txt[1]
-                #     elif mltag == 'munderover':
-                #         math_txt = r'\overset{' + math_txt[2] + '}{' + \
-                #             r'\underset{' + math_txt[1] + '}{' + math_txt[0] + '}}'
-                #     elif mltag == 'mover':
-                #         math_txt = r'\overset{' + \
-                #             math_txt[1] + '}{' + math_txt[0] + '}'
-                #     elif mltag == 'munder':
-                #         math_txt = r'\underset{' + \
-                #             math_txt[1] + '}{' + math_txt[0] + '}'
                 math_txt = tree_to_str(html_math_mltag)
 
                 if is_identifier(math_txt) and (
@@ -182,7 +165,7 @@ class XMLDocument:
             'mover',
             'mi']
 
-        for html_math in html.cssselect('math'):
+        for html_math in math_components:
             for ml_tag in ml_tags:
                 identifiers, reg_string_list = extract_ml_component(
                     html_math, ml_tag, identifiers, reg_string_list)
@@ -206,6 +189,8 @@ class XMLDocument:
         self.sentences = sentences
 
     def POS_tagging(self):
+        """POS tags are used for pattern-based extraction.
+        """
         tagged_sentence_list = [[]] * len(self.identifiers)
         with CoreNLPClient(annotators=['tokenize', 'ssplit', 'pos'], timeout=600000, memory='16G') as client:
             for i, sentence in enumerate(self.sentences):
