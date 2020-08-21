@@ -1,7 +1,6 @@
 .DS_Store
 .vscode/
 data/
-TODO*
 .ipynb_checkpoints/
 .idea/
 output/

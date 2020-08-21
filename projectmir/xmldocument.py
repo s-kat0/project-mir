@@ -83,7 +83,15 @@ class XMLDocument:
         #     is_italic = (math_component.get('mathvariant') == 'italic')
         #     return is_mi and (is_math_component_len_1 or is_italic)
 
-        def is_identifier(math_txt):
+        def is_identifier(math_txt: str) -> bool:
+            """return whther input string represents a variable.
+
+            Args:
+                math_txt ('str'): text that represents an identifier.
+
+            Returns:
+                [bool]: Is math_txt is a variable?
+            """
             not_number = math_txt[0] not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
             return not_number
 
