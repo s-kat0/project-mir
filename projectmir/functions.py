@@ -1,5 +1,5 @@
 import time
-from projectmir.xmldocument import XMLDocument
+from projectmir.xmldocument_1 import XMLDocument
 
 
 def find_identifier_definition(document_path):

@@ -1,11 +1,6 @@
 21st, Aug, 2020
-from typing import NamedTupleで，NamedTupleを用いて実装する．
 TODO:classを使いやすいように設計しなおす．
 
-
-TODO:class documentの見直し
-必要な子要素はidentifiersとformulaeのみ．
-identifiersはクラス，formualaeはリストでOK．
 
 TODO:class identifierの実装
 identifierは，candidatesとsentencesを子要素に持つ．
@@ -22,7 +17,13 @@ candidateは，以下の要素を含む．
   変数に用いられている文字と説明文の頭文字で，等しいものの数．
 
 
+TODO:extract_sentencesの修正．
+stanzaでsentence segmentation -> math要素を含む文を抽出．
 
+TODO:extract_formulaeの実装
+extract_sentences内，=が含まれている場合，数式とみなすこととする．
+
+ 
 
 TODO:パターンマッチングに基づいたidentifier-definition extracitonの実装．
 TODO:Wikipediaデータを用いたパターンマッチングの手法の評価．
