@@ -33,26 +33,37 @@ def kato_ranking_candidates(identifier: Identifier, params=None):
 
     for candidate_ in identifier.candidates:
         n_sentence = len(identifier.sentences)
-        delta = candidate_.word_count_btwn_var_cand
-        tf_candidate = candidate_.candidate_count_in_sentence
+        delta = candidate_.word_count_btwn_var_cand + 1  # delta=1 is minimum.
+        tf_candidate = candidate_.candidate_count_in_sentence / \
+            len(candidate_.included_sentence.split())
         score_match_initial_char = candidate_.score_match_character
-        r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) / params['sigma_d'] ** 2)
-        r_sigma_s = math.exp(- 1 / 2 * (n_sentence ** 2 - 1) / params['sigma_s'] ** 2)
+        r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) /
+                             params['sigma_d'] ** 2)
+        r_sigma_s = math.exp(- 1 / 2 * (n_sentence ** 2 -
+                                        1) / params['sigma_s'] ** 2)
 
         score = (params['alpha'] * r_sigma_d
                  + params['beta'] * r_sigma_s
                  + params['gamma'] * tf_candidate
                  + params['eta'] * score_match_initial_char)
-        score /= (params['alpha'] + params['beta'] + params['gamma'] + params['eta'])
+        score /= (params['alpha'] + params['beta'] +
+                  params['gamma'] + params['eta'])
 
-        ranked_definition_list.append(Definition(definition=candidate_.text, score=score, params=params))
+        ranked_definition_list.append(
+            Definition(
+                definition=candidate_.text,
+                score=score,
+                params=params))
 
-    ranked_definition_list = sorted(ranked_definition_list, key=lambda x: x.score, reverse=True)
+    ranked_definition_list = sorted(
+        ranked_definition_list,
+        key=lambda x: x.score,
+        reverse=True)
 
     return ranked_definition_list
 
 
-def pagel_ranking_candidates(identifier: Identifier, params = None):
+def pagel_ranking_candidates(identifier: Identifier, params=None):
     """rank candidates based on the method proposed by Pagel, R. and Schubotz, M..
     Candidates are the noun phrases in the sentence where the identifier was appeared first.
     Args:
@@ -71,15 +82,30 @@ def pagel_ranking_candidates(identifier: Identifier, params = None):
         n_sentence = len(identifier.sentences)
         delta = candidate_.word_count_btwn_var_cand
         tf_candidate = candidate_.candidate_count_in_sentence
-        r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) / params['sigma_d'] ** 2)
-        r_sigma_s = math.exp(- 1 / 2 * (n_sentence ** 2 - 1) / params['sigma_s'] ** 2)
+        r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) /
+                             params['sigma_d'] ** 2)
+        r_sigma_s = math.exp(- 1 / 2 * (n_sentence ** 2 -
+                                        1) / params['sigma_s'] ** 2)
 
-        score = (params['alpha'] * r_sigma_d + params['beta'] * r_sigma_s + params['gamma'] * tf_candidate)
+        score = (
+            params['alpha'] *
+            r_sigma_d +
+            params['beta'] *
+            r_sigma_s +
+            params['gamma'] *
+            tf_candidate)
         score /= (params['alpha'] + params['beta'] + params['gamma'])
 
-        ranked_definition_list.append(Definition(definition=candidate_.text, score=score, params=params))
+        ranked_definition_list.append(
+            Definition(
+                definition=candidate_.text,
+                score=score,
+                params=params))
 
-    ranked_definition_list = sorted(ranked_definition_list, key=lambda x: x.score, reverse=True)
+    ranked_definition_list = sorted(
+        ranked_definition_list,
+        key=lambda x: x.score,
+        reverse=True)
 
     return ranked_definition_list
 
@@ -151,12 +177,14 @@ def pattern_based_extract_description(identifier: Identifier):
                             mid_pattern += 'the '
                     for i in range(index_start, len(sentence_tagged)):
                         (description_, pos_) = sentence_tagged[i]
-                        if ('MATH' not in description_) and reg_description.fullmatch(pos_):
+                        if ('MATH' not in description_) and reg_description.fullmatch(
+                                pos_):
                             description.append(description_)
                         else:
                             break
                     if description:
-                        extracted_description_list.append(' '.join(description))
+                        extracted_description_list.append(
+                            ' '.join(description))
 
             # 4. let <identifier> be the <description>
             description = []
@@ -166,12 +194,14 @@ def pattern_based_extract_description(identifier: Identifier):
                         (sentence_tagged[index_target + 2][0] == 'the'):
                     for i in range(index_target + 3, len(sentence_tagged)):
                         (description_, pos_) = sentence_tagged[i]
-                        if ('MATH' not in description_) and reg_description.fullmatch(pos_):
+                        if ('MATH' not in description_) and reg_description.fullmatch(
+                                pos_):
                             description.append(description_)
                         else:
                             break
                     if description:
-                        extracted_description_list.append(' '.join(description))
+                        extracted_description_list.append(
+                            ' '.join(description))
 
             # 5. <description> is|are denoted by <identifier>
             description = []
@@ -181,13 +211,15 @@ def pattern_based_extract_description(identifier: Identifier):
                         (sentence_tagged[index_target - 3][0] == ('is' or 'are')):
                     for i in range(index_target - 4, -1, -1):
                         (description_, pos_) = sentence_tagged[i]
-                        if ('MATH' not in description_) and reg_description.fullmatch(pos_):
+                        if ('MATH' not in description_) and reg_description.fullmatch(
+                                pos_):
                             description.append(description_)
                         else:
                             break
                     if description:
                         description = description[::-1]
-                        extracted_description_list.append(' '.join(description))
+                        extracted_description_list.append(
+                            ' '.join(description))
 
             # 6. <identifier> denotes */DT <description>
             description = []
@@ -202,7 +234,8 @@ def pattern_based_extract_description(identifier: Identifier):
                         else:
                             break
                     if description:
-                        extracted_description_list.append(' '.join(description))
+                        extracted_description_list.append(
+                            ' '.join(description))
     if not extracted_description_list:
         extracted_description_list.append(None)
 
@@ -211,7 +244,8 @@ def pattern_based_extract_description(identifier: Identifier):
 
 # sometimes noun phrases are not extracted accurately.
 # Thus, the accuracy of the following method is not so high.
-def pattern_based_extract_description_using_noun_phrases(identifier: Identifier):
+def pattern_based_extract_description_using_noun_phrases(
+        identifier: Identifier):
     """extract description based on the following pattern.
     Although original patterns are proposed by Pagel [1],
     their <description> does not include a determiner (DT).
@@ -251,12 +285,27 @@ def pattern_based_extract_description_using_noun_phrases(identifier: Identifier)
                     '\\' + replace_pattern_)
         sentence = candidate_.included_sentence
         pattern_list = [
-            re.compile(description_candidate + ' ' + identifier_text),
-            re.compile(identifier_text + ' is ' + description_candidate),
-            re.compile('let ' + identifier_text + ' be ' + description_candidate),
-            re.compile(description_candidate + r' [is|are] denoted by ' + identifier_text),
-            re.compile(identifier_text + ' denotes ' + description_candidate)
-        ]
+            re.compile(
+                description_candidate +
+                ' ' +
+                identifier_text),
+            re.compile(
+                identifier_text +
+                ' is ' +
+                description_candidate),
+            re.compile(
+                'let ' +
+                identifier_text +
+                ' be ' +
+                description_candidate),
+            re.compile(
+                description_candidate +
+                r' [is|are] denoted by ' +
+                identifier_text),
+            re.compile(
+                identifier_text +
+                ' denotes ' +
+                description_candidate)]
 
         for pattern_ in pattern_list:
             if pattern_.search(sentence):
