@@ -1,15 +1,87 @@
 from dataclasses import dataclass, field
-from typing import List, Dict
+import math
 import re
+from typing import List, Dict
 
 from projectmir.xmldoc_child import Identifier
 
 
 @dataclass
 class Definition:
-    definition_list: List[str] = field(default_factory=list)
-    score: str = 0
+    definition: str = ''
+    score: float = 0
     params: Dict[str, int] = field(default_factory=dict)
+
+
+def kato_ranking_candidates(identifier: Identifier, params=None):
+    """rank candidates based on the method proposed by Kato, S. and Kano, M..
+    Candidates are the noun phrases in the sentence where the identifier was appeared first.
+    Args:
+        identifier (Identifier)
+        params (dict)
+    Returns:
+        Definition_list (List[Definition])
+    """
+    if params is None:
+        params = {'sigma_d': math.sqrt(12 / math.log(2)),
+                  'sigma_s': 2 / math.sqrt(math.log(2)),
+                  'alpha': 1,
+                  'beta': 1,
+                  'gamma': 0.1,
+                  'eta': 1}
+    ranked_definition_list = []
+
+    for candidate_ in identifier.candidates:
+        n_sentence = len(identifier.sentences)
+        delta = candidate_.word_count_btwn_var_cand
+        tf_candidate = candidate_.candidate_count_in_sentence
+        score_match_initial_char = candidate_.score_match_character
+        r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) / params['sigma_d'] ** 2)
+        r_sigma_s = math.exp(- 1 / 2 * (n_sentence ** 2 - 1) / params['sigma_s'] ** 2)
+
+        score = (params['alpha'] * r_sigma_d
+                 + params['beta'] * r_sigma_s
+                 + params['gamma'] * tf_candidate
+                 + params['eta'] * score_match_initial_char)
+        score /= (params['alpha'] + params['beta'] + params['gamma'] + params['eta'])
+
+        ranked_definition_list.append(Definition(definition=candidate_.text, score=score, params=params))
+
+    ranked_definition_list = sorted(ranked_definition_list, key=lambda x: x.score, reverse=True)
+
+    return ranked_definition_list
+
+
+def pagel_ranking_candidates(identifier: Identifier, params = None):
+    """rank candidates based on the method proposed by Pagel, R. and Schubotz, M..
+    Candidates are the noun phrases in the sentence where the identifier was appeared first.
+    Args:
+        identifier (Identifier)
+    Returns:
+        Definition_list (List[Definition])
+    """
+    if params is None:
+        params = {'sigma_d': math.sqrt(12 / math.log(2)),
+                  'sigma_s': 2 / math.sqrt(math.log(2)),
+                  'alpha': 1,
+                  'beta': 1,
+                  'gamma': 0.1}
+    ranked_definition_list = []
+    for candidate_ in identifier.candidates:
+        n_sentence = len(identifier.sentences)
+        delta = candidate_.word_count_btwn_var_cand
+        tf_candidate = candidate_.candidate_count_in_sentence
+        r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) / params['sigma_d'] ** 2)
+        r_sigma_s = math.exp(- 1 / 2 * (n_sentence ** 2 - 1) / params['sigma_s'] ** 2)
+
+        score = (params['alpha'] * r_sigma_d + params['beta'] * r_sigma_s + params['gamma'] * tf_candidate)
+        score /= (params['alpha'] + params['beta'] + params['gamma'])
+
+        ranked_definition_list.append(Definition(definition=candidate_.text, score=score, params=params))
+
+    ranked_definition_list = sorted(ranked_definition_list, key=lambda x: x.score, reverse=True)
+
+    return ranked_definition_list
 
 
 def pattern_based_extract_description(identifier: Identifier):
@@ -131,8 +203,10 @@ def pattern_based_extract_description(identifier: Identifier):
                             break
                     if description:
                         extracted_description_list.append(' '.join(description))
+    if not extracted_description_list:
+        extracted_description_list.append(None)
 
-    return Definition(definition_list=extracted_description_list)
+    return [Definition(definition=d) for d in extracted_description_list]
 
 
 # sometimes noun phrases are not extracted accurately.
@@ -187,4 +261,4 @@ def pattern_based_extract_description_using_noun_phrases(identifier: Identifier)
         for pattern_ in pattern_list:
             if pattern_.search(sentence):
                 extracted_description_list.append(description_candidate)
-    return Definition(definition_list=extracted_description_list)
+    return [Definition(definition=d) for d in extracted_description_list]
