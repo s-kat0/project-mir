@@ -1,4 +1,3 @@
-# import copy
 from dataclasses import dataclass, field
 from typing import List
 import time
@@ -34,7 +33,9 @@ class XMLDocument:
         print('POS tagging...')
         self.pos_tagging()
         print('extract candidate definition...')
-        self.extract_candidate_definition()
+        self.extract_definition_candidate()
+        print('compute the properties of candidates...')
+        self.compute_candidate_statistics()
         print(f'elapsed time: {(time.time() - start_time):.5f} seconds ---')
 
     def processor(self):
@@ -118,11 +119,13 @@ class XMLDocument:
             Returns:
                 math_txt (str): encoded TeX-like text.
             """
+            ml_list = []
             if isinstance(ml_tree, lxml.html.HtmlElement):
                 if ml_tree.tag in ['mi', 'mo', 'mn']:
                     math_txt = ml_tree.text_content()
+                    ml_list = [math_txt]
                 else:
-                    ml_list = [tree_to_str(x) for x in ml_tree]
+                    ml_list = [tree_to_str(x)[0] for x in ml_tree]
                     if ml_tree.tag == 'mrow':
                         math_txt = ''.join(ml_list)
                     elif ml_tree.tag == 'msubsup':
@@ -148,7 +151,7 @@ class XMLDocument:
                         print('######################')
 
             elif isinstance(ml_tree, list):
-                ml_list = [tree_to_str(x) for x in ml_tree]
+                ml_list = [tree_to_str(x)[0] for x in ml_tree]
                 math_txt = ''.join(ml_list)
 
             else:
@@ -157,7 +160,7 @@ class XMLDocument:
                 print(f'{ml_tree}')
                 print('######################')
 
-            return math_txt
+            return math_txt, ml_list
 
         def extract_ml_component(
                 html_cssselect_math,
@@ -181,9 +184,18 @@ class XMLDocument:
             identifiers_ = list(identifiers)
             replaced_string_list_ = list(replaced_string_list)
             for html_math_mltag in html_cssselect_math.cssselect(mltag):
-                math_txt = tree_to_str(html_math_mltag)
-                if is_identifier(math_txt) and (math_txt not in identifiers_):
-                    identifiers_.append(math_txt)
+                math_txt, ml_list_ = tree_to_str(html_math_mltag)
+                ml_list = []
+                # print(ml_list_)
+                # TODO: moverunderに対応する．
+                for ml_ in ml_list_:
+                    ml_component = re.findall('[over|under]set{(.+)}{(.+)}', ml_)
+                    if ml_component:
+                        ml_list.extend([ml_component[0][0], ml_component[0][1]])
+                    else:
+                        ml_list.append(ml_)
+                if is_identifier(math_txt) and ((math_txt, ml_list) not in identifiers_):
+                    identifiers_.append((math_txt, ml_list))
                 html_math_mltag.drop_tree()
                 replaced_string_ = lxml.html.tostring(html_math_mltag,
                                                       encoding='unicode')
@@ -191,7 +203,7 @@ class XMLDocument:
                     replaced_string_list_.append(
                         (math_txt,
                          replaced_string_,
-                         f'MATH{(identifiers_.index(math_txt)):04d}'))
+                         f'MATH{(identifiers_.index((math_txt, ml_list))):04d}'))
                 else:
                     replaced_string_list_.append(
                         (math_txt, replaced_string_, math_txt))
@@ -227,7 +239,8 @@ class XMLDocument:
                 math_txt = f'MATH{i:04d}'
                 if math_txt in sentence:
                     sentences_list_.append(Sentence(original=sentence))
-            self.identifiers.append(Identifier(text_tex=identifier_,
+            self.identifiers.append(Identifier(text_tex=identifier_[0],
+                                               mi_list=identifier_[1],
                                                id=i,
                                                sentences=sentences_list_))
 
@@ -249,6 +262,24 @@ class XMLDocument:
 
     def pos_tagging(self):
         """POS tags are used for pattern-based extraction.
+        this method is based on stanza.
+        """
+        nlp = stanza.Pipeline('en')
+        for i, identifier in enumerate(self.identifiers):
+            sentence_list = identifier.sentences
+            if sentence_list:
+                for j, sentence in enumerate(sentence_list):
+                    doc = nlp(sentence.original)
+                    for sentence_ in doc.sentences:
+                        word_pos = [(word.text, word.xpos) for word in sentence_.words]
+                        self.identifiers[i].sentences[j].tagged = word_pos
+
+    def pos_tagging_corenlp(self):
+        """POS tags are used for pattern-based extraction.
+        this method is based on Stanford CoreNLP.
+        Sometimes, the pos tagging is not correct.
+        e.g. if you use the sentence "Integrating Eq. 2-x...",
+        this method identify dot(.) as the end of the sentence.
         """
         with CoreNLPClient(annotators=['tokenize', 'ssplit', 'pos'], timeout=600000, memory='16G') as client:
             for i, identifier in enumerate(self.identifiers):
@@ -261,7 +292,11 @@ class XMLDocument:
                         word_pos = [(token.word, token.pos) for token in sentence_.token]
                         self.identifiers[i].sentences[j].tagged = word_pos
 
-    def extract_candidate_definition(self):
+    def extract_definition_candidate(self):
+        """extract definition candidate from candidate-included sentence.
+        assumed that the definition is not a equation and does not have '=' and '≈'.
+        """
+
         def extract_noun_phrases(_client, _text, _annotators=None):
             pattern = 'NP'
             matches = _client.tregex(_text, pattern, annotators=_annotators)
@@ -270,8 +305,8 @@ class XMLDocument:
         # https://github.com/stanfordnlp/stanza/issues/288
         # get noun phrases with tregex
         with CoreNLPClient(timeout=30000, memory='16G') as client:
-            noun_phrase_list = []
             for i, identifier in enumerate(self.identifiers):
+                definition_candidate_list = []
                 if identifier.sentences:
                     sentence = identifier.sentences[0].original
                     noun_phrase_list = extract_noun_phrases(
@@ -281,58 +316,49 @@ class XMLDocument:
 
                     for j, noun_phrase in enumerate(noun_phrase_list):
                         noun_phrase = noun_phrase.rstrip(', ')
-                        if noun_phrase[-8:-4] == 'MATH':
+                        if noun_phrase[-8:] == f'MATH{i:04d}':
                             noun_phrase = noun_phrase[:-8].rstrip(', ')
-                        if noun_phrase and (noun_phrase not in noun_phrase_list):
-                            noun_phrase_list.append(noun_phrase)
+                        if noun_phrase \
+                                and (noun_phrase not in definition_candidate_list) \
+                                and (f'MATH{i:04d}' not in noun_phrase) \
+                                and not (re.search('[=|≈]', noun_phrase)):
+                            definition_candidate_list.append(noun_phrase)
+                            s_replaced = sentence.replace(noun_phrase, 'CANDIDATE')
+                            s_replaced = s_replaced.rstrip(',. :;')
                             self.identifiers[i].candidates.append(
                                 Candidate(text=noun_phrase,
-                                          included_sentence=sentence))
+                                          included_sentence=s_replaced))
 
-    def pattern_based_extract_description(self):
-        """extract description based on the following pattern.
-
-        Although original patterns are proposed by Pagel [1],
-        their <description> does not include a determiner (DT).
-        To simplify the pattern, we assume that <description>
-        includes determiner.
-        <description> can be either pattern: include determiner
-        or not include determiner (proper noun).
-
-        # 1. <description> <identifier>
-        # 2. <identifier> is <description>
-        # 3. let <identifier> be <description>
-        # 4. <description> is|are denoted by <identifier>
-        # 5. <identifier> denotes <description>
-
-        [1]: Pagel, R. and Schubotz, M.: Mathematical Language Processing Project,
-        in Joint Proceedings of the MathUI, OpenMath and ThEdu Workshops and Work
-        in Progress track at CICM, No. 1186, Aachen (2014)
+    def compute_candidate_statistics(self):
+        """compute the following property of the candidate.
+        word_count_to_variable: number of words between the candidate and the variable.
+        if more than 1 candidate exists, the smallest count is applied.
+        candidate_count: number of candidate appeared in the text.
+        score_match_character: +1 when the initial character of the candidate matches
+        with that of the identifier.
         """
-        for math_id_, _ in enumerate(self.identifiers):
-            extracted_description_list = []
-            print(math_id_)
-            identifier = f'MATH{math_id_:04d}'
-            candidates_list = self.identifiers[math_id_].candidates
-            for candidate_ in candidates_list:
-                description_candidate = candidate_.text
-                replace_pattern_list = ['(', ')', '[', ']', '{', '}']
-                for replace_pattern_ in replace_pattern_list:
-                    description_candidate = \
-                        description_candidate.replace(
-                            replace_pattern_,
-                            '\\' + replace_pattern_)
-                sentence = candidate_.included_sentence
-                pattern_list = [
-                    re.compile(description_candidate + ' ' + identifier),
-                    re.compile(identifier + ' is ' + description_candidate),
-                    re.compile('let ' + identifier + ' be ' + description_candidate),
-                    re.compile(description_candidate + r' is denoted by ' + identifier),
-                    re.compile(identifier + ' denotes ' + description_candidate)
-                ]
+        for i, identifier_ in enumerate(self.identifiers):
+            for j, candidate_ in enumerate(identifier_.candidates):
 
-                for pattern_ in pattern_list:
-                    if pattern_.search(sentence):
-                        extracted_description_list.append(description_candidate)
+                candidate_count_in_s = candidate_.included_sentence.count('CANDIDATE')
+                self.identifiers[i].candidates[j].candidate_count_in_sentence = candidate_count_in_s
 
-            self.identifiers[math_id_].pattern_based_candidates = extracted_description_list
+                score_match_character = 0
+                initial_char_in_candidate = set([term[0] for term in candidate_.text.split()])
+                for char_identifier in identifier_.mi_list:
+                    if char_identifier[0] in initial_char_in_candidate:
+                        score_match_character += 1
+                self.identifiers[i].candidates[j].score_match_character = score_match_character
+
+                math_txt = f'MATH{i:04d}'
+                sentence_list = candidate_.included_sentence.split()
+                sentence_list = [s_.rstrip(',. :;') for s_ in sentence_list]
+                math_txt_index = [i for i, term in enumerate(sentence_list) if term == math_txt]
+                candidate_index = [i for i, term in enumerate(sentence_list) if term == 'CANDIDATE']
+                word_count_btwn_var_cand = len(sentence_list)
+                for math_txt_index_ in math_txt_index:
+                    for candidate_index_ in candidate_index:
+                        word_count_btwn_var_cand = \
+                            min(word_count_btwn_var_cand,
+                                abs(math_txt_index_ - candidate_index_) - 1)
+                self.identifiers[i].candidates[j].word_count_btwn_var_cand = word_count_btwn_var_cand
