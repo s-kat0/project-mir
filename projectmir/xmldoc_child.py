@@ -22,13 +22,14 @@ class Sentence:
 @dataclass
 class Identifier:
     text_tex: str = ''
+    mi_list: List[str] = field(default_factory=list)
     id: int = 0
     sentences: List[Sentence] = field(default_factory=list)
     candidates: List[Candidate] = field(default_factory=list)
-    pattern_based_candidates: List[str] = field(default_factory=list)
 
 
 @dataclass
 class Formulae:
     text_replaced: str = ''
     text_tex: str=''
+
