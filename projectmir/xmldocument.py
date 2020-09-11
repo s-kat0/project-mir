@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass, field
 from typing import List
 import time
@@ -21,7 +22,7 @@ class XMLDocument:
     body: str = ''
     identifiers: List[Identifier] = field(default_factory=list)
     formulae: List[Formulae] = field(default_factory=list)
-    sentences_list: List[str] = field(default_factory=list)
+    sentences_list: List[Sentence] = field(default_factory=list)
 
     def __post_init__(self):
         start_time = time.time()
@@ -189,12 +190,15 @@ class XMLDocument:
                 # print(ml_list_)
                 # TODO: moverunderに対応する．
                 for ml_ in ml_list_:
-                    ml_component = re.findall('[over|under]set{(.+)}{(.+)}', ml_)
+                    ml_component = re.findall(
+                        '[over|under]set{(.+)}{(.+)}', ml_)
                     if ml_component:
-                        ml_list.extend([ml_component[0][0], ml_component[0][1]])
+                        ml_list.extend(
+                            [ml_component[0][0], ml_component[0][1]])
                     else:
                         ml_list.append(ml_)
-                if is_identifier(math_txt) and ((math_txt, ml_list) not in identifiers_):
+                if is_identifier(math_txt) and (
+                        (math_txt, ml_list) not in identifiers_):
                     identifiers_.append((math_txt, ml_list))
                 html_math_mltag.drop_tree()
                 replaced_string_ = lxml.html.tostring(html_math_mltag,
@@ -212,11 +216,17 @@ class XMLDocument:
         ml_tags = ['msubsup', 'msub', 'msup',
                    'munderover', 'munder', 'mover', 'mi']
 
+
+        # TODO: formulaeを正しく抜き出せるようにする．
         for html_math in math_components:
-            html_math_alttext = html_math.attrib['alttext']
-            if '=' in html_math_alttext:
-                self.formulae.append(
-                    Formulae(text_tex=html_math_alttext, text_replaced=html_math_alttext))
+            math_text_list = html_math.cssselect('math')
+            for math_text_ in math_text_list:
+                math_text_string = lxml.html.tostring(math_text_, encoding='unicode')
+                if '>=<' in math_text_string:
+                    self.formulae.append(
+                        Formulae(
+                            text_tex=lxml.html.fromstring(math_text_string).text_content(),
+                            text_replaced=math_text_string))
             for ml_tag in ml_tags:
                 identifiers, replaced_string_list = extract_ml_component(
                     html_math, ml_tag, identifiers, replaced_string_list)
@@ -225,10 +235,12 @@ class XMLDocument:
         replaced_string_list = sorted(
             replaced_string_list, key=lambda x: len(x[0]), reverse=True)
         for replaced_string in replaced_string_list:
-            self.body = self.body.replace(replaced_string[1], replaced_string[2])
+            self.body = self.body.replace(
+                replaced_string[1], replaced_string[2])
             for i_formula, _ in enumerate(self.formulae):
                 text_replaced_ = self.formulae[i_formula].text_replaced
-                text_replaced_ = text_replaced_.replace(replaced_string[0], replaced_string[2])
+                text_replaced_ = text_replaced_.replace(
+                    replaced_string[1], replaced_string[2])
                 self.formulae[i_formula].text_replaced = text_replaced_
         self.text = lxml.html.fromstring(self.body).text_content()
         self.sentence_segmentation()
@@ -237,8 +249,8 @@ class XMLDocument:
             sentences_list_ = []
             for sentence in self.sentences_list:
                 math_txt = f'MATH{i:04d}'
-                if math_txt in sentence:
-                    sentences_list_.append(Sentence(original=sentence))
+                if math_txt in sentence.original:
+                    sentences_list_.append(sentence)
             self.identifiers.append(Identifier(text_tex=identifier_[0],
                                                mi_list=identifier_[1],
                                                id=i,
@@ -256,8 +268,9 @@ class XMLDocument:
         doc_sentence_segmented = nlp(self.text)
         sentences_list_ = []
         for i, sentence in enumerate(doc_sentence_segmented.sentences):
-            sentence_text = ' '.join([f'{token.text}' for token in sentence.tokens])
-            sentences_list_.append(sentence_text)
+            sentence_text = ' '.join(
+                [f'{token.text}' for token in sentence.tokens])
+            sentences_list_.append(Sentence(id=i, original=sentence_text))
         self.sentences_list = sentences_list_
 
     def pos_tagging(self):
@@ -271,7 +284,8 @@ class XMLDocument:
                 for j, sentence in enumerate(sentence_list):
                     doc = nlp(sentence.original)
                     for sentence_ in doc.sentences:
-                        word_pos = [(word.text, word.xpos) for word in sentence_.words]
+                        word_pos = [(word.text, word.xpos)
+                                    for word in sentence_.words]
                         self.identifiers[i].sentences[j].tagged = word_pos
 
     def pos_tagging_corenlp(self):
@@ -289,7 +303,8 @@ class XMLDocument:
                         # submit the request to the server.
                         ann = client.annotate(sentence.original)
                         sentence_ = ann.sentence[0]
-                        word_pos = [(token.word, token.pos) for token in sentence_.token]
+                        word_pos = [(token.word, token.pos)
+                                    for token in sentence_.token]
                         self.identifiers[i].sentences[j].tagged = word_pos
 
     def extract_definition_candidate(self):
@@ -300,34 +315,35 @@ class XMLDocument:
         def extract_noun_phrases(_client, _text, _annotators=None):
             pattern = 'NP'
             matches = _client.tregex(_text, pattern, annotators=_annotators)
-            return [sentence[match_id]['spanString'] for sentence in matches['sentences'] for match_id in sentence]
+            return [sentence[match_id]['spanString']
+                    for sentence in matches['sentences'] for match_id in sentence]
 
         # https://github.com/stanfordnlp/stanza/issues/288
         # get noun phrases with tregex
         with CoreNLPClient(timeout=30000, memory='16G') as client:
-            for i, identifier in enumerate(self.identifiers):
+            for i, identifier_ in enumerate(self.identifiers):
                 definition_candidate_list = []
-                if identifier.sentences:
-                    sentence = identifier.sentences[0].original
-                    noun_phrase_list = extract_noun_phrases(
-                        client,
-                        sentence,
-                        _annotators='tokenize,ssplit,pos,lemma,parse')
+                if identifier_.sentences:
+                    for sentence_ in identifier_.sentences:
+                        noun_phrase_list = extract_noun_phrases(
+                            client,
+                            sentence_.original,
+                            _annotators='tokenize,ssplit,pos,lemma,parse')
 
-                    for j, noun_phrase in enumerate(noun_phrase_list):
-                        noun_phrase = noun_phrase.rstrip(', ')
-                        if noun_phrase[-8:] == f'MATH{i:04d}':
-                            noun_phrase = noun_phrase[:-8].rstrip(', ')
-                        if noun_phrase \
-                                and (noun_phrase not in definition_candidate_list) \
-                                and (f'MATH{i:04d}' not in noun_phrase) \
-                                and not (re.search('[=|≈]', noun_phrase)):
-                            definition_candidate_list.append(noun_phrase)
-                            s_replaced = sentence.replace(noun_phrase, 'CANDIDATE')
-                            s_replaced = s_replaced.rstrip(',. :;')
-                            self.identifiers[i].candidates.append(
-                                Candidate(text=noun_phrase,
-                                          included_sentence=s_replaced))
+                        for j, noun_phrase in enumerate(noun_phrase_list):
+                            noun_phrase_ = noun_phrase.rstrip(', ')
+                            if noun_phrase_[-8:] == f'MATH{i:04d}':
+                                noun_phrase_ = noun_phrase_[:-8].rstrip(', ')
+                            if noun_phrase_ and (
+                                    noun_phrase_ not in definition_candidate_list) and (
+                                    f'MATH{i:04d}' not in noun_phrase_) and not (
+                                    re.search('[=|≈]', noun_phrase_)) and ('MATH' not in noun_phrase_):
+                                definition_candidate_list.append(noun_phrase_)
+                                included_sentence = copy.copy(sentence_)
+                                included_sentence.replaced = included_sentence.original.replace(
+                                    noun_phrase_, 'CANDIDATE').rstrip(',. :;')
+                                self.identifiers[i].candidates.append(
+                                    Candidate(text=noun_phrase_, included_sentence=included_sentence))
 
     def compute_candidate_statistics(self):
         """compute the following property of the candidate.
@@ -339,22 +355,26 @@ class XMLDocument:
         """
         for i, identifier_ in enumerate(self.identifiers):
             for j, candidate_ in enumerate(identifier_.candidates):
-
-                candidate_count_in_s = candidate_.included_sentence.count('CANDIDATE')
+                candidate_count_in_s = \
+                    candidate_.included_sentence.replaced.count('CANDIDATE')
                 self.identifiers[i].candidates[j].candidate_count_in_sentence = candidate_count_in_s
 
                 score_match_character = 0
-                initial_char_in_candidate = set([term[0] for term in candidate_.text.split()])
+                initial_char_in_candidate = set(
+                    [term[0] for term in candidate_.text.split()])
                 for char_identifier in identifier_.mi_list:
                     if char_identifier[0] in initial_char_in_candidate:
                         score_match_character += 1
+                score_match_character /= len(identifier_.mi_list)
                 self.identifiers[i].candidates[j].score_match_character = score_match_character
 
                 math_txt = f'MATH{i:04d}'
-                sentence_list = candidate_.included_sentence.split()
+                sentence_list = candidate_.included_sentence.replaced.split()
                 sentence_list = [s_.rstrip(',. :;') for s_ in sentence_list]
-                math_txt_index = [i for i, term in enumerate(sentence_list) if term == math_txt]
-                candidate_index = [i for i, term in enumerate(sentence_list) if term == 'CANDIDATE']
+                math_txt_index = [i for i, term in enumerate(
+                    sentence_list) if term == math_txt]
+                candidate_index = [i for i, term in enumerate(
+                    sentence_list) if term == 'CANDIDATE']
                 word_count_btwn_var_cand = len(sentence_list)
                 for math_txt_index_ in math_txt_index:
                     for candidate_index_ in candidate_index:

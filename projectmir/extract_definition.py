@@ -32,10 +32,9 @@ def kato_ranking_candidates(identifier: Identifier, params=None):
     ranked_definition_list = []
 
     for candidate_ in identifier.candidates:
-        n_sentence = len(identifier.sentences)
-        delta = candidate_.word_count_btwn_var_cand + 1  # delta=1 is minimum.
-        tf_candidate = candidate_.candidate_count_in_sentence / \
-            len(candidate_.included_sentence.split())
+        n_sentence = candidate_.included_sentence.id - identifier.sentences[0].id
+        delta = candidate_.word_count_btwn_var_cand + 1  # minimum is 1.
+        tf_candidate = candidate_.candidate_count_in_sentence / len(candidate_.included_sentence.replaced.strip())
         score_match_initial_char = candidate_.score_match_character
         r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) /
                              params['sigma_d'] ** 2)
@@ -60,6 +59,8 @@ def kato_ranking_candidates(identifier: Identifier, params=None):
         key=lambda x: x.score,
         reverse=True)
 
+    if not ranked_definition_list:
+        return [Definition(definition='')]
     return ranked_definition_list
 
 
@@ -68,6 +69,7 @@ def pagel_ranking_candidates(identifier: Identifier, params=None):
     Candidates are the noun phrases in the sentence where the identifier was appeared first.
     Args:
         identifier (Identifier)
+        params (dict)
     Returns:
         Definition_list (List[Definition])
     """
@@ -79,21 +81,22 @@ def pagel_ranking_candidates(identifier: Identifier, params=None):
                   'gamma': 0.1}
     ranked_definition_list = []
     for candidate_ in identifier.candidates:
-        n_sentence = len(identifier.sentences)
-        delta = candidate_.word_count_btwn_var_cand
-        tf_candidate = candidate_.candidate_count_in_sentence
+        n_sentence = candidate_.included_sentence.id - identifier.sentences[0].id
+        delta = candidate_.word_count_btwn_var_cand + 1
+        tf_candidate = candidate_.candidate_count_in_sentence \
+                       / len(candidate_.included_sentence.replaced.strip())
         r_sigma_d = math.exp(- 1 / 2 * (delta ** 2 - 1) /
                              params['sigma_d'] ** 2)
         r_sigma_s = math.exp(- 1 / 2 * (n_sentence ** 2 -
                                         1) / params['sigma_s'] ** 2)
 
         score = (
-            params['alpha'] *
-            r_sigma_d +
-            params['beta'] *
-            r_sigma_s +
-            params['gamma'] *
-            tf_candidate)
+                params['alpha'] *
+                r_sigma_d +
+                params['beta'] *
+                r_sigma_s +
+                params['gamma'] *
+                tf_candidate)
         score /= (params['alpha'] + params['beta'] + params['gamma'])
 
         ranked_definition_list.append(
@@ -107,6 +110,8 @@ def pagel_ranking_candidates(identifier: Identifier, params=None):
         key=lambda x: x.score,
         reverse=True)
 
+    if not ranked_definition_list:
+        return [Definition(definition='')]
     return ranked_definition_list
 
 
@@ -143,7 +148,7 @@ def pattern_based_extract_description(identifier: Identifier):
     extracted_description_list = []
     math_id = identifier.id
     identifier_text = f'MATH{math_id:04d}'
-    for sentence in identifier.sentences[:1]:
+    for sentence in identifier.sentences:
         sentence_tagged = sentence.tagged
         description_candidate_ = []
         indexes_target = [
@@ -239,6 +244,8 @@ def pattern_based_extract_description(identifier: Identifier):
     if not extracted_description_list:
         extracted_description_list.append(None)
 
+    if not extracted_description_list:
+        return [Definition(definition='')]
     return [Definition(definition=d) for d in extracted_description_list]
 
 
@@ -283,7 +290,7 @@ def pattern_based_extract_description_using_noun_phrases(
                 description_candidate.replace(
                     replace_pattern_,
                     '\\' + replace_pattern_)
-        sentence = candidate_.included_sentence
+        sentence = candidate_.included_sentence.original
         pattern_list = [
             re.compile(
                 description_candidate +
@@ -310,4 +317,42 @@ def pattern_based_extract_description_using_noun_phrases(
         for pattern_ in pattern_list:
             if pattern_.search(sentence):
                 extracted_description_list.append(description_candidate)
+    if not extracted_description_list:
+        return [Definition(definition='')]
     return [Definition(definition=d) for d in extracted_description_list]
+
+
+def evaluate_identifier_definition(
+        identifier_list: List[Identifier],
+        gold_identifier_list: List[str],
+        definition_list_list: List[List[Definition]],
+        gold_definition_list: List[str],
+        max_rank=1):
+    score_identifier_tp, score_identifier_fp = 0, 0
+    score_definition_tp, score_definition_fp = 0, 0
+    count_definition_positive = 0
+
+    for i, identifier_ in enumerate(identifier_list):
+        if identifier_.text_tex in gold_identifier_list:
+            score_identifier_tp += 1
+
+            id_identifier = gold_identifier_list.index(identifier_.text_tex)
+            for definition_ in definition_list_list[i][:min(max_rank, len(definition_list_list[i]))]:
+                count_definition_positive += 1
+                if definition_.definition in gold_definition_list[id_identifier]:
+                    # print(definition_.definition)
+                    score_definition_tp += 1
+                else:
+                    score_definition_fp += 1
+        else:
+            # print(identifier_.text_tex)
+            score_identifier_fp += 1
+
+    score_identifier_recall = score_identifier_tp / len(gold_identifier_list)
+    score_identifier_precision = score_identifier_tp / len(identifier_list)
+
+    score_definition_recall = score_definition_tp / len(gold_definition_list)
+    score_definition_precision = score_definition_tp / count_definition_positive
+
+    return (score_identifier_recall, score_identifier_precision), \
+           (score_definition_recall, score_definition_precision)

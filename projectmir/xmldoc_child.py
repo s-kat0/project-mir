@@ -3,20 +3,21 @@ from typing import List
 
 
 @dataclass
+class Sentence:
+    id: int = 0
+    original: str = ''
+    tagged: str = ''
+    replaced: str = ''
+
+@dataclass
 class Candidate:
     text: str
     score_pagel: float = 0.0
     score_propsed: float = 0.0
-    included_sentence: str = ''
+    included_sentence: Sentence = field(default_factory=Sentence)
     word_count_btwn_var_cand: int = 0
     candidate_count_in_sentence: int = 0
     score_match_character: int = 0
-
-
-@dataclass
-class Sentence:
-    original: str = ''
-    tagged: str = ''
 
 
 @dataclass
@@ -31,5 +32,4 @@ class Identifier:
 @dataclass
 class Formulae:
     text_replaced: str = ''
-    text_tex: str=''
-
+    text_tex: str = ''
